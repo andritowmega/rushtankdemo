@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Juego con Canvas</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+
+<body class="m-0 p-0" id="content-game">
+  <div id="render" class="bg-black w-screen h-screen flex items-center justify-center">
+    <div class="grid gap-2">
+      <img src="images/banner.png" class="mx-auto" width="600px" />
+
+      <div class="flex items-center gap-2 border-white border-t-1 p-2 justify-center">
+        <input type="text" class="bg-white p-1 rounded-md" id="nicknameJoin" placeholder="Nickname">
+        <input type="text" class="bg-white p-1 rounded-md" id="room" placeholder="Room">
+        <button id="join" class="bg-green-900 p-2 rounded-md cursor-pointer text-white text-3xl" onclick="joinRoom()"
+          type="button">Unirse a la partida</button>
+      </div>
+      <div class="flex items-center gap-2 border-white border-t-1 p-2 justify-center">
+        <input type="text" class="bg-white p-1 rounded-md" id="nicknameCreate" placeholder="Nickname">
+        <button id="create" class="bg-green-900 p-2 rounded-md cursor-pointer text-white text-3xl"
+          onclick="createRoom()" type="button">Crear una partida</button>
+      </div>
+
+    </div>
+    <div id="modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div class="bg-gray-800 rounded-2xl shadow-xl p-6 w-96 relative">
+
+        <!-- Botón cerrar 
+        <button onclick="closeModal()"
+          class="absolute top-3 right-3 text-gray-400 hover:text-white text-xl">&times;</button>-->
+
+        <!-- Contenido del modal -->
+        <h2 class="text-2xl font-semibold mb-4 text-white" id="titleModal"></h2>
+        <p class="text-gray-300 mb-6" id="contentModal">
+
+        <div class="flex items-center justify-center">
+
+        </div>
+
+        </p>
+
+
+
+      </div>
+    </div>
+  </div>
+  <div id="sound" class="fixed bottom-2 right-2 flex items-center gap-2 text-white text-lg bg-black/50 p-3 rounded-lg"
+    style="z-index:1000; pointer-events:auto;">
+    <span id="soundIcon">🔉</span>
+    <input id="volumeControl" type="range" min="0" max="100" value="50" class="w-32 accent-green-500 cursor-pointer"
+      onchange="changeVolumen()">
+  </div>
+  <script src="js/game.js"></script>
+  <script>
+    let idpeer;
+    var globalPeer;
+    var total=0;
+    let gameAudio = new Audio("sounds/2.mp3");
+    gameAudio.loop = true;
+    const savedVolume = document.cookie.split('; ').find(row => row.startsWith('datasound='));
+    if (savedVolume) {
+      const volumeValue = savedVolume.split('=')[1];
+      document.getElementById("volumeControl").value = volumeValue;
+      gameAudio.volume = volumeValue / 100;
+    } else {
+      gameAudio.volume = 0.5; // volumen inicial 50% si no existe la cookie
+    }
+
+
+    // Botón de play
+
+    function changeVolumen() {
+      const volumeControl = document.getElementById("volumeControl");
+      const soundIcon = document.getElementById("soundIcon");
+      const value = volumeControl.value;
+      gameAudio.volume = value / 100;
+
+      if (value == 0) {
+        soundIcon.textContent = "🔇";
+      } else if (value < 50) {
+        soundIcon.textContent = "🔉";
+      } else {
+        soundIcon.textContent = "🔊";
+      }
+      document.cookie = `datasound=${value}; path=/;`;
+    }
+  </script>
+  <script>
+    function createPeer() {
+      globalPeer = new Peer();
+
+      globalPeer.on('open', id => {
+        total++;
+        console.log('Mi ID de peer es: ' + id);
+        idpeer = id;
+        closeModal();
+        createdRoom();
+      });
+      //playNow();
+    }
+    function createRoom() {
+      document.getElementById("modal").classList.remove("hidden");
+      dataModal("create");
+      createPeer();
+    }
+    function joinRoom() {
+      document.getElementById("modal").classList.remove("hidden");
+      dataModal("join");
+    }
+    function createdRoom(){
+      document.getElementById("modal").classList.remove("hidden");
+      dataModal("created");
+    }
+    function dataModal(type) {
+      if (type == "create") {
+        document.getElementById("titleModal").innerHTML = "Creando partida";
+        document.getElementById("contentModal").innerHTML = "Usted como creador de la partida, debe estar siempre conectado a la partida para que los otros jugadores se puedan conectar a la partida.";
+        document.getElementById("contentModal").innerHTML += `
+        <div class="flex items-center justify-center">
+          <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      `;
+      }
+      else if (type == "join") {
+        document.getElementById("titleModal").innerHTML = "Uniendo a la partida";
+        document.getElementById("contentModal").innerHTML = "Espere a que los otros jugadores se unan a la partida.";
+        document.getElementById("contentModal").innerHTML += `
+        <div class="flex items-center justify-center">
+          <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      `;
+      }
+      else if (type == "created") {
+        document.getElementById("titleModal").innerHTML = "Partida Creada !!!";
+        document.getElementById("contentModal").innerHTML = "<p>Comparta su ID con sus amigos: "+idpeer+"</p>";
+        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'>"+total+"</p>";
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("modal").classList.add("hidden");
+    }
+  </script>
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+
+</body>
+
+</html>
