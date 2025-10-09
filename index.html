@@ -57,7 +57,7 @@
   <script>
     let idpeer;
     var globalPeer;
-    var total=0;
+    var total = 0;
     let gameAudio = new Audio("sounds/2.mp3");
     gameAudio.loop = true;
     const savedVolume = document.cookie.split('; ').find(row => row.startsWith('datasound='));
@@ -89,17 +89,38 @@
     }
   </script>
   <script>
+    function initPeer(){
+      window.peer = new Peer();
+    }
     function createPeer() {
-      globalPeer = new Peer();
-
-      globalPeer.on('open', id => {
+      initPeer();
+      window.peer.on('open', id => {
         total++;
         console.log('Mi ID de peer es: ' + id);
         idpeer = id;
         closeModal();
         createdRoom();
       });
+      window.peer.on('connection', conn => {
+        total++;
+        console.log("conectados",total);
+        conn.on('data', data => {
+          console.log('Recibido:', data);
+          window.playNow();
+        });
+
+      });
+
       //playNow();
+    }
+    function joinPeers(nick,room){
+      initPeer();
+      const conn = window.peer.connect(room);
+      conn.on('open', () => {
+        console.log("ingrese")
+        conn.send("nick:"+nick);
+        window.playNow();
+      });
     }
     function createRoom() {
       document.getElementById("modal").classList.remove("hidden");
@@ -108,9 +129,12 @@
     }
     function joinRoom() {
       document.getElementById("modal").classList.remove("hidden");
+      const nick = document.getElementById("nicknameJoin").value;
+      const room = document.getElementById("room").value;
       dataModal("join");
+      joinPeers(nick,room);
     }
-    function createdRoom(){
+    function createdRoom() {
       document.getElementById("modal").classList.remove("hidden");
       dataModal("created");
     }
@@ -135,8 +159,8 @@
       }
       else if (type == "created") {
         document.getElementById("titleModal").innerHTML = "Partida Creada !!!";
-        document.getElementById("contentModal").innerHTML = "<p>Comparta su ID con sus amigos: "+idpeer+"</p>";
-        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'>"+total+"</p>";
+        document.getElementById("contentModal").innerHTML = "<p>Comparta su ID con sus amigos: " + idpeer + "</p>";
+        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'>" + total + "</p>";
       }
     }
 
