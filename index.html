@@ -91,18 +91,25 @@
   </script>
   <script>
     function initPeer() {
-      window.peer = new Peer();
+      window.peer = new Peer({
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true
+      });
     }
     function createPeer() {
       initPeer();
-      window.peer.on('open', id => {
+      const peer = window.peer;
+
+      peer.on('open', id => {
         total++;
         console.log('Mi ID de peer es: ' + id);
         idpeer = id;
         closeModal();
         createdRoom();
       });
-      window.peer.on('connection', conn => {
+      peer.on('connection', conn => {
         total++;
         console.log("conectados", total);
         conn.on('data', data => {
@@ -128,25 +135,16 @@
       });
 
       // Intentar conectar con el host
-      const conn = peer.connect(room);
+      
 
-      conn.on("open", () => {
+      peer.on("open", () => {
+        conn = peer.connect(room);
         console.log("✅ Conexión establecida con la sala:", room);
         conn.send("nick:" + nick);
         window.playNow();
       });
 
-      conn.on("error", (err) => {
-        console.error("❌ Error en la conexión:", err);
-      });
-
-      conn.on("close", () => {
-        console.warn("🔌 Conexión cerrada con la sala:", room);
-      });
-
-      conn.on("iceStateChanged", (state) => {
-        console.log("🧊 Estado ICE:", state);
-      });
+      
     }
 
     function createRoom() {
