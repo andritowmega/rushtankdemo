@@ -54,6 +54,7 @@
       onchange="changeVolumen()">
   </div>
   <script type="module" src="js/game.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <script>
     let idpeer;
     var globalPeer;
@@ -89,21 +90,28 @@
     }
   </script>
   <script>
-    function initPeer(){
-      window.peer = new Peer();
+    function initPeer() {
+      window.peer = new Peer({
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true
+      });
     }
     function createPeer() {
       initPeer();
-      window.peer.on('open', id => {
+      const peer = window.peer;
+
+      peer.on('open', id => {
         total++;
         console.log('Mi ID de peer es: ' + id);
         idpeer = id;
         closeModal();
         createdRoom();
       });
-      window.peer.on('connection', conn => {
+      peer.on('connection', conn => {
         total++;
-        console.log("conectados",total);
+        console.log("conectados", total);
         conn.on('data', data => {
           console.log('Recibido:', data);
           window.playNow();
@@ -113,15 +121,32 @@
 
       //playNow();
     }
-    function joinPeers(nick,room){
+    function joinPeers(nick, room) {
       initPeer();
-      const conn = window.peer.connect(room);
-      conn.on('open', () => {
-        console.log("ingrese")
-        conn.send("nick:"+nick);
+
+      const peer = window.peer;
+
+      console.log("Peer local:", peer);
+      console.log("Intentando conectar con la sala:", room);
+
+      // --- Escucha errores generales del peer (importante)
+      peer.on("error", (err) => {
+        console.error("⚠️ Error del peer:", err.type, err);
+      });
+
+      // Intentar conectar con el host
+      
+
+      peer.on("open", () => {
+        conn = peer.connect(room);
+        console.log("✅ Conexión establecida con la sala:", room);
+        conn.send("nick:" + nick);
         window.playNow();
       });
+
+      
     }
+
     function createRoom() {
       document.getElementById("modal").classList.remove("hidden");
       dataModal("create");
@@ -132,7 +157,7 @@
       const nick = document.getElementById("nicknameJoin").value;
       const room = document.getElementById("room").value;
       dataModal("join");
-      joinPeers(nick,room);
+      joinPeers(nick, room);
     }
     function createdRoom() {
       document.getElementById("modal").classList.remove("hidden");
@@ -160,7 +185,7 @@
       else if (type == "created") {
         document.getElementById("titleModal").innerHTML = "Partida Creada !!!";
         document.getElementById("contentModal").innerHTML = "<p>Comparta su ID con sus amigos: " + idpeer + "</p>";
-        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'>" + total + "</p>";
+        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'> conectados: " + total + "</p>";
       }
     }
 
@@ -168,7 +193,7 @@
       document.getElementById("modal").classList.add("hidden");
     }
   </script>
-  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+
 
 </body>
 
