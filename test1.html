@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PeerJS Test - Crear Sala y Conectarse</title>
+  <title>PeerJS Sala con Múltiples Usuarios</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script>
     let peer;
+    let connections = []; // lista de conexiones si eres host
     let conn;
 
-    // Crear sala (host)
     function createRoom() {
-      const nick = document.getElementById("nick").value || "host";
+      const nick = document.getElementById("nick").value || "Host";
       peer = new Peer({
         host: "0.peerjs.com",
         port: 443,
@@ -24,26 +24,34 @@
           `✅ Sala creada. ID: ${id}`;
       });
 
+      // cuando alguien se conecta al host
       peer.on("connection", (connection) => {
-        conn = connection;
+        connections.push(connection);
         document.getElementById("status").innerText =
-          `🎮 Jugador conectado (${conn.peer})`;
+          `🎮 Jugador conectado: ${connection.peer}`;
 
-        conn.on("data", (data) => {
-          addMessage(`🟢 ${conn.peer}: ${data}`);
+        connection.on("data", (data) => {
+          addMessage(`📥 ${connection.peer}: ${data}`);
+          // reenviar a todos los demás (broadcast)
+          for (const c of connections) {
+            if (c !== connection && c.open) c.send(`${connection.peer}: ${data}`);
+          }
+        });
+
+        connection.on("close", () => {
+          connections = connections.filter(c => c !== connection);
+          addMessage(`❌ ${connection.peer} se desconectó`);
         });
       });
 
       peer.on("error", (err) => {
         console.error("Peer error:", err);
-        document.getElementById("status").innerText =
-          "❌ Error: " + err.type;
+        document.getElementById("status").innerText = "❌ Error: " + err.type;
       });
     }
 
-    // Unirse a una sala existente
     function joinRoom() {
-      const nick = document.getElementById("nick").value || "player";
+      const nick = document.getElementById("nick").value || "Jugador";
       const roomId = document.getElementById("roomId").value.trim();
       if (!roomId) return alert("Ingresa el ID de la sala");
 
@@ -57,25 +65,21 @@
       peer.on("open", () => {
         document.getElementById("status").innerText =
           `🔗 Intentando conectar con la sala: ${roomId}`;
-
         conn = peer.connect(roomId);
 
         let timeout = setTimeout(() => {
-          console.error("⏰ No se pudo conectar con la sala");
-          document.getElementById("status").innerText =
-            "⏰ Tiempo de espera agotado";
-          conn.close();
+          document.getElementById("status").innerText = "⏰ Tiempo agotado";
+          conn?.close();
         }, 5000);
 
         conn.on("open", () => {
           clearTimeout(timeout);
-          document.getElementById("status").innerText =
-            `✅ Conectado con la sala: ${roomId}`;
-          conn.send(`Hola, soy ${nick}`);
+          document.getElementById("status").innerText = `✅ Conectado a ${roomId}`;
+          conn.send(`${nick} se ha unido a la sala`);
         });
 
         conn.on("data", (data) => {
-          addMessage(`🟢 HOST: ${data}`);
+          addMessage(`🟢 ${data}`);
         });
 
         conn.on("error", (err) => {
@@ -86,13 +90,18 @@
       });
     }
 
-    // Enviar mensaje
     function sendMessage() {
       const msg = document.getElementById("msg").value;
       if (conn && conn.open) {
         conn.send(msg);
         addMessage(`🧑 Tú: ${msg}`);
         document.getElementById("msg").value = "";
+      } else if (connections.length > 0) {
+        // Si eres host
+        for (const c of connections) {
+          if (c.open) c.send(`Host: ${msg}`);
+        }
+        addMessage(`🧑 (Host): ${msg}`);
       } else {
         alert("No hay conexión activa");
       }
@@ -108,40 +117,15 @@
   </script>
 
   <style>
-    body {
-      font-family: sans-serif;
-      background: #111;
-      color: #fff;
-      text-align: center;
-      padding: 20px;
-    }
-    #chat {
-      background: #222;
-      border: 1px solid #444;
-      padding: 10px;
-      margin-top: 20px;
-      height: 200px;
-      overflow-y: auto;
-      border-radius: 8px;
-    }
-    input, button {
-      padding: 8px;
-      margin: 5px;
-      border-radius: 4px;
-      border: none;
-    }
-    button {
-      background: #2d6cdf;
-      color: white;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #1c4ca0;
-    }
+    body { font-family: sans-serif; background: #111; color: #fff; text-align: center; padding: 20px; }
+    #chat { background: #222; border: 1px solid #444; padding: 10px; margin-top: 20px; height: 200px; overflow-y: auto; border-radius: 8px; }
+    input, button { padding: 8px; margin: 5px; border-radius: 4px; border: none; }
+    button { background: #2d6cdf; color: white; cursor: pointer; }
+    button:hover { background: #1c4ca0; }
   </style>
 </head>
 <body>
-  <h2>🎮 PeerJS Multiplayer Test</h2>
+  <h2>🎮 PeerJS - Sala con Múltiples Jugadores</h2>
   <input id="nick" placeholder="Tu nombre" />
   <div>
     <button onclick="createRoom()">🟢 Crear Sala</button>

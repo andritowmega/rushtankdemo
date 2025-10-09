@@ -298,6 +298,7 @@ class Tank {
       case keys['ArrowUp']:
         if (count <= 0) this.rotateTo(0);
         this.y -= speed;
+        const peer = window.peer
         count++;
         break;
 
