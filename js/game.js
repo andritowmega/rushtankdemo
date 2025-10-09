@@ -1,3 +1,6 @@
+import {SOUND_TYPES} from "./constants/sound-types.js";
+import  {GAME_SOUNDS} from "./constants/game-sounds.js";
+import {IMPACT_SOUNDS} from "./constants/impact-sounds.js";
 
 let canvas;
 let ctx;
@@ -94,7 +97,7 @@ class Game {
       }
       if(bullets[i].x > player.x - player.width/2 && bullets[i].x < player.x + player.width/2 && bullets[i].y > player.y - player.height/2 && bullets[i].y < player.y + player.height/2){
         player.updateLife(bullets[i].getDmg());
-        game.playSound("hit");
+        game.playSound(SOUND_TYPES.HIT);
         bullets.splice(i, 1);
         i--;
       }
@@ -108,14 +111,14 @@ class Game {
       const soundEffectValue = savedSoundEffect.split('=')[1];
     }
     switch (type) {
-      case "canon":
-        audio.src = "sounds/canon.mp3";
+      case SOUND_TYPES.CANON:
+        audio.src = `sounds/${GAME_SOUNDS.CANNON_SHOT}`;
         audio.volume = soundEffectValue / 100;
         audio.play().catch(err => console.warn("Error al reproducir el sonido:", err));
         break;
-      case "hit":
-        const randomNum = Math.floor(Math.random() * 11) + 1;
-        audio.src = `sounds/impact${randomNum}.mp3`;
+      case SOUND_TYPES.HIT:
+        const randomNum = Math.floor(Math.random() * 11);
+        audio.src = `sounds/${IMPACT_SOUNDS[randomNum]}`;
         audio.volume = soundEffectValue / 100;
         audio.play().catch(err => console.warn("Error al reproducir el sonido:", err));
         break;
@@ -180,6 +183,8 @@ function playNow() {
   });
 
 }
+window.playNow = playNow;
+
 function dataPlayer() {
   const render = document.getElementById("content-game");
   render.innerHTML += `<div id="hud" class="fixed top-2 left-2 text-white text-2xl bg-black/50 rounded-lg text-sm">
@@ -321,7 +326,7 @@ class Tank {
           bullets.push(new Bullet(this.x, this.y, 10, 30, this.angle, this));
           this.lastShotTime = now; // reiniciar cooldown
           if (game) {
-            game.playSound("canon");
+            game.playSound(SOUND_TYPES.CANON);
           }
         }
         break;
