@@ -1,6 +1,7 @@
 import {SOUND_TYPES} from "./constants/sound-types.js";
-import  {GAME_SOUNDS} from "./constants/game-sounds.js";
+import {GAME_SOUNDS} from "./constants/game-sounds.js";
 import {IMPACT_SOUNDS} from "./constants/impact-sounds.js";
+import {GAME_WIDTH,GAME_HEIGHT, ASPECT_RATIO, interval} from "./constants/game-setup.js";
 
 let canvas;
 let ctx;
@@ -9,12 +10,6 @@ let mapOffsetX = 0;
 let mapOffsetY = 0;
 
 let lastTime = 0;
-const FPS = 60; // frames por segundo
-const interval = 1000 / FPS; // ms por framee
-
-const GAME_WIDTH = 1408;   // tamaño base
-const GAME_HEIGHT = 700;  // tamaño base
-const ASPECT_RATIO = GAME_WIDTH / GAME_HEIGHT;
 
 const imagesToLoad = [
   { name: "player", src: "images/tank-cut.png" },
