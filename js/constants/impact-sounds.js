@@ -1,3 +1,7 @@
+/**
+ * Lista de archivos de sonido para impactos/recibir daño
+ * Se selecciona aleatoriamente uno de estos sonidos cuando el jugador recibe daño
+ */
 export const IMPACT_SOUNDS = [
   "impact1.mp3",
   "impact2.mp3",
