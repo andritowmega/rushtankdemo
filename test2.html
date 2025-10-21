@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+
+<body>
+    <h2>💬 Chat PeerJS</h2>
+    <p>Tu ID: <span id="my-id">...</span></p>
+    <p id="ping">Ping: ...</p>
+
+    <button id="crear">Crear sala</button>
+    <input id="nickname" placeholder="NickName" />
+    <input id="idSala" placeholder="ID de sala" />
+    <button id="unir">Unirse</button>
+
+    <div id="chat" style="display:none;margin-top:20px;">
+        <pre id="mensajes" style="background:#eee;padding:10px;height:200px;overflow:auto;"></pre>
+        <input id="texto" placeholder="Mensaje..." />
+        <button id="enviar">Enviar</button>
+    </div>
+
+    <script>
+        const peer = new Peer();
+        const myId = document.getElementById("my-id");
+        const mensajes = document.getElementById("mensajes");
+        const texto = document.getElementById("texto");
+        const chat = document.getElementById("chat");
+        const idSala = document.getElementById("idSala");
+        const nickName = document.getElementById("nickname");
+        const pingDisplay = document.getElementById("ping");
+
+        let conexiones = [];
+        let connHost = null;
+        let soyHost = false;
+        let lastPingTime = 0;
+        let pingInterval = null;
+
+        peer.on("open", id => {
+            myId.textContent = id;
+            console.log("Mi ID:", id);
+        });
+
+        // Cuando un cliente se conecta al host
+        peer.on("connection", conn => {
+            if (!soyHost) return;
+            conexiones.push(conn);
+            conn.on("data", data => {
+                if (data.type === "join") {
+                    print(`${data.nick} se conectó`);
+                    conexiones.forEach(c => c.send(data));
+                } else if (data.type === "message") {
+                    conexiones.forEach(c => c.send(data));
+                    print(`${data.nick}: ${data.text}`);
+                } else if (data.type === "ping") {
+                    // Responder el ping del cliente
+                    conn.send({ type: "pong", time: data.time });
+                }
+            });
+        });
+
+        document.getElementById("crear").onclick = () => {
+            soyHost = true;
+            chat.style.display = "block";
+            alert("Sala creada, comparte tu ID: " + peer.id);
+        };
+
+        document.getElementById("unir").onclick = () => {
+            const sala = idSala.value.trim();
+            const nick = nickName.value.trim();
+            if (!sala) return alert("Ingresa un ID");
+            if (!nick) return alert("Crea un nickname");
+            connHost = peer.connect(sala);
+            connHost.on("open", () => {
+                chat.style.display = "block";
+                connHost.send({
+                    type: "join",
+                    nick: nick,
+                    id: peer.id
+                });
+                iniciarPing(); // empezar a medir ping
+            });
+
+            connHost.on("data", data => {
+                if (data.type === "join") {
+                    print(`${data.nick} se conectó`);
+                } else if (data.type === "message") {
+                    print(`${data.nick}: ${data.text}`);
+                } else if (data.type === "pong") {
+                    const delay = Date.now() - data.time;
+                    pingDisplay.textContent = `Ping: ${delay} ms`;
+                }
+            });
+        };
+
+        document.getElementById("enviar").onclick = () => {
+            const msg = texto.value.trim();
+            const nick = nickName.value.trim();
+            if (!nick) return alert("Crea un nickname");
+            if (!msg) return;
+            const data = { type: "message", from: peer.id, nick: nick, text: msg };
+            texto.value = "";
+            if (soyHost) {
+                conexiones.forEach(c => c.send(data));
+            } else if (connHost) {
+                connHost.send(data);
+            }
+        };
+
+        function iniciarPing() {
+            if (pingInterval) clearInterval(pingInterval);
+            pingInterval = setInterval(() => {
+                if (connHost && connHost.open) {
+                    connHost.send({ type: "ping", time: Date.now() });
+                }
+            }, 1000);
+        }
+
+        function print(t) {
+            mensajes.textContent += t + "\n";
+            mensajes.scrollTop = mensajes.scrollHeight;
+        }
+
+    </script>
+</body>
+
+</html>
