@@ -105,6 +105,7 @@
             const data = { type: "message", from: peer.id, nick: nick, text: msg };
             texto.value = "";
             if (soyHost) {
+                print(nick+": "+msg);
                 conexiones.forEach(c => c.send(data));
             } else if (connHost) {
                 connHost.send(data);

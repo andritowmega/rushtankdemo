@@ -60,6 +60,7 @@
     var globalPeer;
     var total = 0;
     var connectedPlayers = []; // Array para almacenar nicknames de jugadores conectados
+    var conexiones = []; // Array para mantener todas las conexiones activas (como en test2.html)
     let gameAudio = new Audio("sounds/2.mp3");
     gameAudio.loop = true;
     const savedVolume = document.cookie.split('; ').find(row => row.startsWith('datasound='));
@@ -112,30 +113,31 @@
          createdRoom();
        });
       peer.on('connection', conn => {
+        if (!window.isHost) return; // Solo el host maneja conexiones
+
+        conexiones.push(conn); // Agregar conexión a la lista
         total++;
-        console.log("conectados", total);
+        console.log("Nuevo cliente conectado. Total conexiones:", conexiones.length);
 
         // Agregar nickname del nuevo jugador (temporal hasta que envíe su nick)
         connectedPlayers.push("Jugador " + total);
-
-        updatePlayerCount(); // Actualizar contador en UI
+        updatePlayerCount();
 
         conn.on('data', data => {
-          console.log('Recibido:', data);
+          console.log('Datos recibidos del cliente:', data);
 
           // Procesar mensajes del juego
           if (typeof data === 'object' && data.type) {
             if (data.type === 'game_start') {
-              // Iniciar juego cuando el host presiona el botón
-              closeModal();
-              window.playNow();
+              // Esto no debería suceder desde clientes, pero por si acaso
+              console.warn('Cliente intentó iniciar juego');
             } else {
               window.handlePeerMessage(data, conn.peer);
             }
           } else {
             // Mensaje inicial con nickname
             const nick = data.replace("nick:", "");
-            console.log('Nuevo jugador conectado:', nick);
+            console.log('Cliente se unió con nickname:', nick);
 
             // Actualizar el nickname en la lista
             const playerIndex = connectedPlayers.length - 1;
@@ -144,15 +146,29 @@
 
             console.log('Lista actualizada de jugadores:', connectedPlayers);
 
-            // Enviar actualización de lista a TODOS los clientes conectados
-            setTimeout(() => {
-              broadcastPlayerList();
-            }, 100);
+            // IMPORTANTE: Reenviar la información del nuevo jugador a TODOS los clientes conectados
+            const joinMessage = {
+              type: 'player_joined',
+              nick: nick,
+              players: connectedPlayers
+            };
+
+            conexiones.forEach(c => {
+              if (c.open) {
+                c.send(joinMessage);
+              }
+            });
+
+            console.log('Información de unión enviada a todos los clientes');
           }
         });
 
-        // Limpiar jugadores inactivos periódicamente
-        setInterval(window.cleanupInactivePlayers, 1000);
+        // Manejar desconexiones
+        conn.on('close', () => {
+          console.log('Cliente desconectado');
+          conexiones = conexiones.filter(c => c !== conn);
+          // Aquí podríamos actualizar la lista de jugadores si es necesario
+        });
       });
 
       //playNow();
@@ -181,19 +197,26 @@
 
         // Configurar recepción de mensajes del juego
         conn.on('data', (data) => {
+          console.log('Cliente recibió datos:', data);
+
           if (typeof data === 'object' && data.type) {
             if (data.type === 'game_start') {
               // Iniciar juego cuando el host presiona el botón
+              console.log('Host inició el juego');
               closeModal();
               window.playNow();
+            } else if (data.type === 'player_joined') {
+              // Un nuevo jugador se unió - actualizar lista
+              console.log('Nuevo jugador se unió:', data.nick);
+              updateWaitingPlayersList(data.players);
             } else if (data.type === 'player_list_update') {
-              // Actualizar lista de jugadores esperando
+              // Actualización general de la lista de jugadores
               updateWaitingPlayersList(data.players);
             } else {
               window.handlePeerMessage(data, conn.peer);
             }
           }
-          // No iniciar juego automáticamente para clientes conectados
+          // No hay mensajes de texto simples para unirse
         });
 
         // NO iniciar el juego aquí - esperar a que el host presione "Iniciar Partida"
@@ -370,48 +393,52 @@
 
     // Función para enviar la lista de jugadores a todos los clientes
     function broadcastPlayerList() {
+      if (!window.isHost) return; // Solo el host puede hacer broadcast
+
       const playerListMessage = {
         type: 'player_list_update',
         players: connectedPlayers
       };
 
-      console.log('Enviando lista de jugadores a todos los clientes:', connectedPlayers);
+      console.log('HOST: Enviando lista de jugadores a todos los clientes:', connectedPlayers);
 
-      // Enviar a TODAS las conexiones activas (incluyendo la nueva)
+      // Enviar a TODAS las conexiones activas usando el array conexiones
       let sentCount = 0;
-      for (const conn of Object.values(window.peer.connections)) {
+      conexiones.forEach(conn => {
         if (conn && conn.open) {
           conn.send(playerListMessage);
           sentCount++;
         }
-      }
+      });
 
-      console.log(`Lista enviada a ${sentCount} conexiones`);
+      console.log(`Lista enviada a ${sentCount} conexiones activas`);
     }
 
     // Iniciar el juego para todos los jugadores conectados
     function startGameForAll() {
+      if (!window.isHost) return; // Solo el host puede iniciar
+
       if (total < 2) {
         alert("Necesitas al menos 2 jugadores para iniciar la partida");
         return;
       }
 
-      console.log("Iniciando partida para todos los jugadores...");
+      console.log("HOST: Iniciando partida para todos los jugadores conectados...");
 
       // Enviar mensaje de inicio a todos los jugadores conectados
       const startMessage = { type: 'game_start' };
 
-      // Enviar a todas las conexiones activas
+      // Enviar usando el array conexiones (como en test2.html)
       let sentCount = 0;
-      for (const conn of Object.values(window.peer.connections)) {
+      conexiones.forEach(conn => {
         if (conn && conn.open) {
           conn.send(startMessage);
           sentCount++;
-          console.log(`Mensaje de inicio enviado a conexión ${sentCount}`);
+          console.log(`Mensaje de inicio enviado a cliente ${sentCount}`);
         }
-      }
+      });
 
-      console.log(`Total mensajes enviados: ${sentCount}`);
+      console.log(`Total mensajes de inicio enviados: ${sentCount}`);
 
       // Iniciar el juego localmente (para el host)
       closeModal();
