@@ -59,6 +59,7 @@
     let idpeer;
     var globalPeer;
     var total = 0;
+    var connectedPlayers = []; // Array para almacenar nicknames de jugadores conectados
     let gameAudio = new Audio("sounds/2.mp3");
     gameAudio.loop = true;
     const savedVolume = document.cookie.split('; ').find(row => row.startsWith('datasound='));
@@ -103,20 +104,55 @@
       const peer = window.peer;
 
       peer.on('open', id => {
-        total++;
-        console.log('Mi ID de peer es: ' + id);
-        idpeer = id;
-        closeModal();
-        createdRoom();
-      });
+         total++;
+         console.log('Mi ID de peer es: ' + id);
+         idpeer = id;
+         setAsHost(true);  // Este cliente es el host
+         closeModal();
+         createdRoom();
+       });
       peer.on('connection', conn => {
         total++;
         console.log("conectados", total);
+
+        // Agregar nickname del nuevo jugador (temporal hasta que envíe su nick)
+        connectedPlayers.push("Jugador " + total);
+
+        updatePlayerCount(); // Actualizar contador en UI
+
         conn.on('data', data => {
           console.log('Recibido:', data);
-          window.playNow();
+
+          // Procesar mensajes del juego
+          if (typeof data === 'object' && data.type) {
+            if (data.type === 'game_start') {
+              // Iniciar juego cuando el host presiona el botón
+              closeModal();
+              window.playNow();
+            } else {
+              window.handlePeerMessage(data, conn.peer);
+            }
+          } else {
+            // Mensaje inicial con nickname
+            const nick = data.replace("nick:", "");
+            console.log('Nuevo jugador conectado:', nick);
+
+            // Actualizar el nickname en la lista
+            const playerIndex = connectedPlayers.length - 1;
+            connectedPlayers[playerIndex] = nick;
+            updatePlayersList();
+
+            console.log('Lista actualizada de jugadores:', connectedPlayers);
+
+            // Enviar actualización de lista a TODOS los clientes conectados
+            setTimeout(() => {
+              broadcastPlayerList();
+            }, 100);
+          }
         });
 
+        // Limpiar jugadores inactivos periódicamente
+        setInterval(window.cleanupInactivePlayers, 1000);
       });
 
       //playNow();
@@ -138,10 +174,30 @@
       
 
       peer.on("open", () => {
+        setAsHost(false);  // Este cliente NO es el host
         conn = peer.connect(room);
         console.log("✅ Conexión establecida con la sala:", room);
         conn.send("nick:" + nick);
-        window.playNow();
+
+        // Configurar recepción de mensajes del juego
+        conn.on('data', (data) => {
+          if (typeof data === 'object' && data.type) {
+            if (data.type === 'game_start') {
+              // Iniciar juego cuando el host presiona el botón
+              closeModal();
+              window.playNow();
+            } else if (data.type === 'player_list_update') {
+              // Actualizar lista de jugadores esperando
+              updateWaitingPlayersList(data.players);
+            } else {
+              window.handlePeerMessage(data, conn.peer);
+            }
+          }
+          // No iniciar juego automáticamente para clientes conectados
+        });
+
+        // NO iniciar el juego aquí - esperar a que el host presione "Iniciar Partida"
+        // window.playNow(); // REMOVIDO
       });
 
       
@@ -156,14 +212,19 @@
       document.getElementById("modal").classList.remove("hidden");
       const nick = document.getElementById("nicknameJoin").value;
       const room = document.getElementById("room").value;
-      dataModal("join");
+      dataModal("join", nick); // Pasar el nickname para mostrar en la lista de espera
       joinPeers(nick, room);
+    }
+
+    // Función para determinar si somos host
+    function setAsHost(isHostFlag) {
+      window.isHost = isHostFlag;
     }
     function createdRoom() {
       document.getElementById("modal").classList.remove("hidden");
       dataModal("created");
     }
-    function dataModal(type) {
+    function dataModal(type, playerNick = null) {
       if (type == "create") {
         document.getElementById("titleModal").innerHTML = "Creando partida";
         document.getElementById("contentModal").innerHTML = "Usted como creador de la partida, debe estar siempre conectado a la partida para que los otros jugadores se puedan conectar a la partida.";
@@ -175,22 +236,186 @@
       }
       else if (type == "join") {
         document.getElementById("titleModal").innerHTML = "Uniendo a la partida";
-        document.getElementById("contentModal").innerHTML = "Espere a que los otros jugadores se unan a la partida.";
-        document.getElementById("contentModal").innerHTML += `
-        <div class="flex items-center justify-center">
-          <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      `;
+        document.getElementById("contentModal").innerHTML = `
+          <div class="space-y-4">
+            <p>Esperando a que el creador inicie la partida...</p>
+            <div class="text-center">
+              <p class="text-green-400 font-semibold">Tu nickname: ${playerNick || 'Jugador'}</p>
+              <div class="mt-2">
+                <p class="text-white text-sm mb-1">Jugadores en la sala:</p>
+                <div id="waitingPlayersList" class="text-left bg-gray-800 p-2 rounded max-h-32 overflow-y-auto">
+                  <div class="text-gray-400 text-sm">Cargando...</div>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-center">
+              <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          </div>
+        `;
       }
       else if (type == "created") {
+        // Agregar el nickname del creador
+        const creatorNick = document.getElementById("nicknameCreate").value || "Creador";
+        connectedPlayers = [creatorNick];
+
         document.getElementById("titleModal").innerHTML = "Partida Creada !!!";
-        document.getElementById("contentModal").innerHTML = "<p>Comparta su ID con sus amigos: " + idpeer + "</p>";
-        document.getElementById("contentModal").innerHTML += "<p id='totalplayers'> conectados: " + total + "</p>";
+        document.getElementById("contentModal").innerHTML = `
+          <div class="space-y-4">
+            <div class="flex items-center gap-2">
+              <span class="text-white">ID de sala:</span>
+              <input type="text" id="roomIdDisplay" value="${idpeer}" readonly
+                     class="bg-gray-700 text-white px-2 py-1 rounded flex-1 text-sm">
+              <button onclick="copyRoomId(this)" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
+                Copiar
+              </button>
+            </div>
+            <div class="text-center">
+              <p class="text-green-400 font-semibold" id="totalplayers">Jugadores conectados: ${total}</p>
+              <div class="mt-2">
+                <p class="text-white text-sm mb-1">Jugadores:</p>
+                <div id="playersList" class="text-left bg-gray-800 p-2 rounded max-h-32 overflow-y-auto">
+                  <div class="text-green-400 text-sm">• ${creatorNick} (Tú)</div>
+                </div>
+              </div>
+              <p class="text-gray-400 text-sm mt-2">Esperando a más jugadores...</p>
+            </div>
+            <div class="flex justify-center">
+              <button id="startGameBtn" onclick="startGameForAll()"
+                      class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled>
+                Iniciar Partida
+              </button>
+            </div>
+          </div>
+        `;
+        updateStartButton();
       }
     }
 
     function closeModal() {
       document.getElementById("modal").classList.add("hidden");
+    }
+
+    // Función para copiar el ID de la sala al portapapeles
+    function copyRoomId(buttonElement) {
+      const roomIdInput = document.getElementById("roomIdDisplay");
+      roomIdInput.select();
+      roomIdInput.setSelectionRange(0, 99999); // Para móviles
+      navigator.clipboard.writeText(roomIdInput.value).then(() => {
+        // Mostrar feedback visual
+        const button = buttonElement;
+        const originalText = button.textContent;
+        button.textContent = "¡Copiado!";
+        button.classList.add("bg-green-600");
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.classList.remove("bg-green-600");
+        }, 2000);
+      }).catch(err => {
+        console.error('Error al copiar: ', err);
+        // Fallback silencioso para navegadores antiguos
+        const textArea = document.createElement("textarea");
+        textArea.value = roomIdInput.value;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      });
+    }
+
+    // Actualizar el contador de jugadores y el estado del botón
+    function updatePlayerCount() {
+      const playerCountElement = document.getElementById("totalplayers");
+      if (playerCountElement) {
+        playerCountElement.textContent = `Jugadores conectados: ${total}`;
+        updatePlayersList();
+        updateStartButton();
+      }
+    }
+
+    // Actualizar la lista visual de jugadores
+    function updatePlayersList() {
+      const playersListElement = document.getElementById("playersList");
+      if (playersListElement) {
+        playersListElement.innerHTML = connectedPlayers.map((nick, index) =>
+          `<div class="text-green-400 text-sm">• ${nick}${index === 0 ? ' (Tú)' : ''}</div>`
+        ).join('');
+      }
+    }
+
+    // Actualizar el estado del botón de iniciar partida
+    function updateStartButton() {
+      const startBtn = document.getElementById("startGameBtn");
+      if (startBtn) {
+        if (total >= 2) {
+          startBtn.disabled = false;
+          startBtn.textContent = "Iniciar Partida";
+        } else {
+          startBtn.disabled = true;
+          startBtn.textContent = "Esperando más jugadores...";
+        }
+      }
+    }
+
+    // Actualizar la lista de jugadores esperando (para clientes)
+    function updateWaitingPlayersList(players) {
+      const waitingListElement = document.getElementById("waitingPlayersList");
+      if (waitingListElement && players) {
+        waitingListElement.innerHTML = players.map(nick =>
+          `<div class="text-green-400 text-sm">• ${nick}</div>`
+        ).join('');
+      }
+    }
+
+    // Función para enviar la lista de jugadores a todos los clientes
+    function broadcastPlayerList() {
+      const playerListMessage = {
+        type: 'player_list_update',
+        players: connectedPlayers
+      };
+
+      console.log('Enviando lista de jugadores a todos los clientes:', connectedPlayers);
+
+      // Enviar a TODAS las conexiones activas (incluyendo la nueva)
+      let sentCount = 0;
+      for (const conn of Object.values(window.peer.connections)) {
+        if (conn && conn.open) {
+          conn.send(playerListMessage);
+          sentCount++;
+        }
+      }
+
+      console.log(`Lista enviada a ${sentCount} conexiones`);
+    }
+
+    // Iniciar el juego para todos los jugadores conectados
+    function startGameForAll() {
+      if (total < 2) {
+        alert("Necesitas al menos 2 jugadores para iniciar la partida");
+        return;
+      }
+
+      console.log("Iniciando partida para todos los jugadores...");
+
+      // Enviar mensaje de inicio a todos los jugadores conectados
+      const startMessage = { type: 'game_start' };
+
+      // Enviar a todas las conexiones activas
+      let sentCount = 0;
+      for (const conn of Object.values(window.peer.connections)) {
+        if (conn && conn.open) {
+          conn.send(startMessage);
+          sentCount++;
+          console.log(`Mensaje de inicio enviado a conexión ${sentCount}`);
+        }
+      }
+
+      console.log(`Total mensajes enviados: ${sentCount}`);
+
+      // Iniciar el juego localmente (para el host)
+      closeModal();
+      window.playNow();
     }
   </script>
 

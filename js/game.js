@@ -18,6 +18,12 @@ let mapOffsetY = 0; // Desplazamiento Y de la cámara
 
 let lastTime = 0;  // Timestamp del último frame para control de FPS
 
+// ===== MULTIJUGADOR =====
+let isHost = false;           // Si este cliente es el host
+let remotePlayers = new Map(); // Mapa de jugadores remotos (id -> playerData)
+let lastSyncTime = 0;         // Timestamp del último envío de datos
+let syncInterval = 50;        // Enviar datos cada 50ms (20 FPS)
+
 // Lista de imágenes a cargar al inicio
 const imagesToLoad = [
   { name: "player", src: "images/tank-cut.png" },
@@ -502,9 +508,15 @@ class Tank {
           if (game) {
             game.playSound(SOUND_TYPES.CANON);  // Reproducir sonido de cañón
           }
+
+          // Enviar disparo a otros jugadores
+          sendBulletToPeers(this.x, this.y, this.angle);
         }
         break;
     }
+
+    // Sincronizar posición con otros jugadores
+    syncPlayerPosition();
   }
 }
 
@@ -731,6 +743,9 @@ function gameLoop(timestamp) {
       });
     }
 
+    // Dibujar jugadores remotos
+    drawRemotePlayers(ctx);
+
     // Inicialización de elementos de prueba (solo primera iteración)
     if(countInLoop == 0) {
       game.test();  // Generar tanques y balas de prueba
@@ -746,6 +761,135 @@ function gameLoop(timestamp) {
   // Continuar el loop
   requestAnimationFrame(gameLoop);
 }
+
+// ===== FUNCIONES MULTIJUGADOR =====
+
+/**
+ * Sincroniza la posición del jugador local con otros jugadores
+ */
+function syncPlayerPosition() {
+  const now = Date.now();
+  if (now - lastSyncTime > syncInterval && window.peer && window.peer.connections) {
+    lastSyncTime = now;
+
+    const playerData = {
+      type: 'player_update',
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      life: player.life
+    };
+
+    // Enviar a todas las conexiones activas
+    for (const conn of Object.values(window.peer.connections)) {
+      if (conn && conn.open) {
+        conn.send(playerData);
+      }
+    }
+  }
+}
+
+/**
+ * Envía información de bala disparada a otros jugadores
+ * @param {number} x - Posición X de la bala
+ * @param {number} y - Posición Y de la bala
+ * @param {number} angle - Ángulo de la bala
+ */
+function sendBulletToPeers(x, y, angle) {
+  if (!window.peer || !window.peer.connections) return;
+
+  const bulletData = {
+    type: 'bullet_fired',
+    x: x,
+    y: y,
+    angle: angle,
+    ownerId: window.peer.id
+  };
+
+  // Enviar a todas las conexiones activas
+  for (const conn of Object.values(window.peer.connections)) {
+    if (conn && conn.open) {
+      conn.send(bulletData);
+    }
+  }
+}
+
+/**
+ * Dibuja los jugadores remotos en el canvas
+ * @param {CanvasRenderingContext2D} ctx - Contexto del canvas
+ */
+function drawRemotePlayers(ctx) {
+  remotePlayers.forEach((playerData, playerId) => {
+    if (playerData && playerData.x !== undefined) {
+      ctx.save();
+      ctx.translate(playerData.x, playerData.y);
+      ctx.rotate(playerData.angle || 0);
+
+      // Dibujar tanque remoto (con color diferente para distinguir)
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.8)'; // Rojo translúcido
+      ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
+
+      // Dibujar sprite si está disponible
+      if (loadedImages.player) {
+        ctx.globalAlpha = 0.8; // Hacerlo ligeramente transparente
+        ctx.drawImage(loadedImages.player, -player.width / 2, -player.height / 2, player.width, player.height);
+        ctx.globalAlpha = 1.0; // Restaurar opacidad
+      }
+
+      ctx.restore();
+    }
+  });
+}
+
+/**
+ * Procesa mensajes recibidos de otros jugadores
+ * @param {Object} data - Datos recibidos
+ * @param {string} senderId - ID del jugador que envió los datos
+ */
+function handlePeerMessage(data, senderId) {
+  switch (data.type) {
+    case 'player_update':
+      // Actualizar posición de jugador remoto
+      remotePlayers.set(senderId, {
+        x: data.x,
+        y: data.y,
+        angle: data.angle,
+        life: data.life,
+        lastUpdate: Date.now()
+      });
+      break;
+
+    case 'bullet_fired':
+      // Crear bala de jugador remoto
+      if (!bullets) bullets = [];
+      bullets.push(new Bullet(data.x, data.y, 10, 30, data.angle, { id: data.ownerId }));
+      break;
+
+    default:
+      console.log('Mensaje desconocido:', data);
+  }
+}
+
+/**
+ * Limpia jugadores remotos inactivos (timeout)
+ */
+function cleanupInactivePlayers() {
+  const now = Date.now();
+  const timeout = 5000; // 5 segundos sin actualización
+
+  for (const [playerId, playerData] of remotePlayers) {
+    if (now - playerData.lastUpdate > timeout) {
+      remotePlayers.delete(playerId);
+      console.log('Jugador remoto eliminado por inactividad:', playerId);
+    }
+  }
+}
+
+// Hacer funciones globales para acceso desde index.html
+window.syncPlayerPosition = syncPlayerPosition;
+window.sendBulletToPeers = sendBulletToPeers;
+window.handlePeerMessage = handlePeerMessage;
+window.cleanupInactivePlayers = cleanupInactivePlayers;
 
 
 
